@@ -1,0 +1,6 @@
+*.txt
+*.png
+**/__pycache__/
+.vscode/
+*.jpg
+*.pb
