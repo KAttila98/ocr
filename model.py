@@ -19,6 +19,7 @@ class OCRModel():
     @staticmethod
     def load_and_process_image(img_path : str, apply_denoising : bool = True, apply_thresholding : bool = True, img_resize_factor : int = 2, save_result_path : str = None) -> np.ndarray:
 
+        # Based on: https://tesseract-ocr.github.io/tessdoc/ImproveQuality
         try:
             img = cv2.imread(img_path)
         except: 
