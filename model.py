@@ -17,7 +17,11 @@ class OCRModel():
         self.img_rotation_angle_range = img_rotation_angle_range
     
     @staticmethod
-    def load_and_process_image(img_path : str, apply_denoising : bool = True, apply_thresholding : bool = True, img_resize_factor : int = 2, save_result_path : str = None) -> np.ndarray:
+    def load_and_process_image(img_path : str, apply_denoising : bool = True, thresholding_method : str = None, img_resize_factor : int = 2, save_result_path : str = None) -> np.ndarray:
+        
+        
+        thresholding_methods = {"otsu": lambda img: cv2.threshold(img, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1], 
+                                "adaptive": lambda img: cv2.adaptiveThreshold(img,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,21,10)}
 
         # Based on: https://tesseract-ocr.github.io/tessdoc/ImproveQuality
         try:
@@ -45,12 +49,14 @@ class OCRModel():
             # that only the blue coloured objects are highlighted  
             # and stored in res 
             img = cv2.bitwise_and(img,img, mask= mask) 
-            apply_thresholding = True
+            thresholding_method = None
         
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # threshold the image using Otsu's thresholding method
-        if apply_thresholding:
-            img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+        # threshold the image using either Otsu or adaptive thresholding method
+        if thresholding_method:
+            img = thresholding_methods[thresholding_method](img)
+
+
         
         if save_result_path:
             plt.figure(figsize=(20,12))
@@ -167,9 +173,9 @@ class OCRModel():
 
         return filtered_rrects, filtered_texts
     
-    def extract_text_from_image(self, img_path : str, apply_denoising : bool = True, apply_thresholding : bool = True, img_resize_factor : int = 2, txt_output_path : str = None, visualize_results : bool = False, output_image_path : str = None):
+    def extract_text_from_image(self, img_path : str, apply_denoising : bool = True, thresholding_method : str = None, img_resize_factor : int = 2, txt_output_path : str = None, visualize_results : bool = False, output_image_path : str = None):
 
-        img = OCRModel.load_and_process_image(img_path, apply_denoising, apply_thresholding, img_resize_factor)
+        img = OCRModel.load_and_process_image(img_path, apply_denoising, thresholding_method, img_resize_factor)
         
         # Needed for image rotation
         height, width = img.shape[:2]
