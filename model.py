@@ -13,17 +13,32 @@ class OCRModel():
 
     def __init__(self, confidence_threshold : int = 80, img_rotation_angle_range : range = range(-45,45,5)):
 
+        """
+        Keyword arguments:
+        confidence_threshold -- Predictions above this threshold will be saved and forwarded to NMS
+        img_rotation_angle_range -- Range of image rotation angles in format of: from_angle to_angle step_size
+        """
+
         self.confidence_threshold = confidence_threshold
         self.img_rotation_angle_range = img_rotation_angle_range
     
     @staticmethod
     def load_and_process_image(img_path : str, apply_denoising : bool = True, thresholding_method : str = None, img_resize_factor : int = 2, save_result_path : str = None) -> np.ndarray:
         
-        
+        """
+        Performs the user-defined preprocessing steps.
+
+        Keyword arguments:
+        img_path -- Path to the input image
+        apply_denoising -- If True, cv2.fastNlMeansDenoisingColored will be performed on the input image
+        thresholding_method -- Possible values: None, otsu, adaptive
+        img_resize_factor -- Should be larger than 1. THe image will be scaled along both dimension by this value
+        save_result_path -- If not None, the output of preprocessing is saved as png
+        """
+
         thresholding_methods = {"otsu": lambda img: cv2.threshold(img, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1], 
                                 "adaptive": lambda img: cv2.adaptiveThreshold(img,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,21,10)}
 
-        # Based on: https://tesseract-ocr.github.io/tessdoc/ImproveQuality
         try:
             img = cv2.imread(img_path)
         except: 
@@ -56,8 +71,6 @@ class OCRModel():
         if thresholding_method:
             img = thresholding_methods[thresholding_method](img)
 
-
-        
         if save_result_path:
             plt.figure(figsize=(20,12))
             plt.imsave(save_result_path, img, cmap='gray')
@@ -81,11 +94,16 @@ class OCRModel():
     @staticmethod
     def __visualize_results(img_path : str, filtered_rrects : List, filtered_texts : List, save_path : str = None):
 
+        """
+        Visualizations containing the highlighted, recognized text (filtered_rrects, filtered_texts) will be saved under save_path
+        """
+
         try:
             img = cv2.imread(img_path)
         except: 
             raise("Could not read image")
 
+        # Adding each (possibly rotated rectangle and the corresponding text to the image)
         for rrect, text in zip(filtered_rrects, filtered_texts): 
             box = cv2.boxPoints(rrect)
             box = np.int0(box)
@@ -101,11 +119,23 @@ class OCRModel():
     @staticmethod
     def __save_results_in_txt(txt_path, filtered_rrects : List, filtered_texts : List):
 
+        """
+        Saving the extracted text into .txt
+        """
+
         with open(txt_path, "w") as f:
             for i in range(len(filtered_rrects)):
                 f.write(f"Found text: {filtered_texts[i]}; Center position (in pixels): ({filtered_rrects[i][0][0]},{filtered_rrects[i][0][1]}); Dimension (width, height): ({filtered_rrects[i][1][0]},{filtered_rrects[i][1][1]}); Orientation (degrees): {filtered_rrects[i][2]}\n")
     
     def __apply_tesseract(self, image : np.ndarray, angle : int, all_results : Dict[int, Dict[str, List]], img_resize_factor : int):
+        
+        """
+        Applies Tesseract algorithm on a given image
+
+        Keyword arguments:
+        angle -- The image will be rotated by this angle (in degrees) before applying Tesseract
+        all_results -- Dictionary containing all the prediction results so far
+        """
 
         # Applying Tesseract to extract text
         results = pytesseract.image_to_data(image, output_type=Output.DICT)
@@ -138,13 +168,22 @@ class OCRModel():
 
     def __filter_double_detections(self, unfiltered_results : Dict[int, Dict[str, List]], image_centerX : int, image_centerY : int, img_resize_factor : int):
 
+        """
+        Filters double detections possibly caused by applying Tesseract multiple times on the same (but rotated) image
+
+        Keyword arguments:
+        unfiltered_results -- Dictionary containing all the prediction results so far
+        image_centerX,image_centerY -- Center coordinates of the image on which Tesseract was applied
+        img_resize_factor -- Needed to recalculate center coordinates in case when resizing was applied
+        """
+
         rrects = []
         scores = []
         texts = []
 
         # Calculating the original center point (before eventual upscaling) of the image for rotation
         orig_img_centerX, orig_image_centerY = image_centerX // img_resize_factor, image_centerY // img_resize_factor
-        # Transforming back the rotated bounding boxes to the original image
+        # Transforming back the rotated bounding boxes to the original image coordinate system
         for angle in self.img_rotation_angle_range:               
             result = unfiltered_results[angle]
 
@@ -175,6 +214,18 @@ class OCRModel():
     
     def extract_text_from_image(self, img_path : str, apply_denoising : bool = True, thresholding_method : str = None, img_resize_factor : int = 2, txt_output_path : str = None, visualize_results : bool = False, output_image_path : str = None):
 
+        """
+        Core function realizing the text extraction from input image
+
+        Keyword arguments:
+        img_path -- Path to the input image
+        apply_denoising -- If True, cv2.fastNlMeansDenoisingColored will be performed on the input image
+        thresholding_method -- Possible values: None, otsu, adaptive
+        img_resize_factor -- Should be larger than 1. THe image will be scaled along both dimension by this value
+        txt_output_path -- Extracted text will be saved under this folder
+        visualize_results -- If True, visualizations containing the highlighted, recognized text will be saved under output_image_path
+        """
+
         img = OCRModel.load_and_process_image(img_path, apply_denoising, thresholding_method, img_resize_factor)
         
         # Needed for image rotation
@@ -191,13 +242,15 @@ class OCRModel():
             image = cv2.warpAffine(image, M, (width, height))
 
             # Applying Tesseract and adding the results to all_results dictionary
-            all_result = self.__apply_tesseract(image, angle, all_results, img_resize_factor)
+            self.__apply_tesseract(image, angle, all_results, img_resize_factor)
             
-        
+        # Transforming back the rotated bounding boxes to the original image coordinate system and performs NMS on them afterwards
         filtered_rrects, filtered_texts = self.__filter_double_detections(all_results, centerX, centerY, img_resize_factor) 
 
+        # Saving the predictions in .txt
         if txt_output_path:
             OCRModel.__save_results_in_txt(txt_output_path, filtered_rrects, filtered_texts)
 
+        # Saving visual output
         if visualize_results:
             OCRModel.__visualize_results(img_path, filtered_rrects, filtered_texts, output_image_path)
