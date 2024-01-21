@@ -47,7 +47,6 @@ if __name__ == '__main__':
     ocr = OCRModel(confidence_threshold=args.confidence_threshold, img_rotation_angle_range=range(int(args.rotation_range[0]), int(args.rotation_range[1]), int(args.rotation_range[2])))
 
     for filename in tqdm(filenames):
-        filename=filenames[-30]
         ocr.extract_text_from_image(img_path = f'{args.image_folder_path}/{filename}', 
                                     apply_denoising = args.apply_denoising, thresholding_method = args.thresholding_method, img_resize_factor = args.image_upscale_factor, 
                                     visualize_results = args.save_visualizations, output_image_path = f'{args.visualization_folder_path}/{filename.split(".")[0]}.png', 
